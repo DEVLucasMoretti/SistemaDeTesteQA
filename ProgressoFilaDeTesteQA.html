@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <title>Progresso de correções</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
   :root{
     --bg:#faf9f6;
@@ -94,6 +95,10 @@
     padding:6px 12px;font-size:13px;cursor:pointer;
   }
   button:hover{background:#f2f0ea;}
+  .btn-add{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600;}
+  .btn-add:hover{background:#134a80;}
+  .btn-import{background:#1a8f5a;border-color:#1a8f5a;color:#fff;font-weight:600;}
+  .btn-import:hover{background:#146e46;}
   .reset{float:right;font-size:12px;color:var(--muted);cursor:pointer;}
   .loading{color:var(--muted);font-size:13px;}
   .empty{color:var(--muted);font-size:13px;padding:16px 0;text-align:center;}
@@ -321,6 +326,64 @@ async function addItem(){
   }
 }
 
+async function importExcel(event){
+  const file = event.target.files[0];
+  if(!file) return;
+  const statusEl = document.getElementById('import-status');
+  statusEl.textContent = 'Lendo arquivo...';
+
+  try{
+    const buffer = await file.arrayBuffer();
+    const workbook = XLSX.read(buffer, { type: 'array' });
+    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+
+    if(!rows.length){
+      statusEl.textContent = 'Nenhuma linha encontrada no arquivo.';
+      event.target.value = '';
+      return;
+    }
+
+    let sucesso = 0, duplicados = 0, erros = 0;
+    statusEl.textContent = `Importando 0/${rows.length}...`;
+
+    for(let i=0; i<rows.length; i++){
+      const row = rows[i];
+      const codigo = String(row.Codigo ?? row['Código'] ?? row.codigo ?? '').trim();
+      const modulo = String(row.Modulo ?? row['Módulo'] ?? row.modulo ?? '').trim();
+      const cliente = String(row.Cliente ?? row.cliente ?? '').trim();
+      const tipo = String(row.Tipo ?? row.tipo ?? 'Correção').trim() || 'Correção';
+
+      if(!codigo){ continue; }
+
+      try{
+        const res = await fetch(`${API_BASE_URL}/items`, {
+          method: 'POST',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ testador: currentTester, codigo, tipo, modulo, cliente })
+        });
+        if(res.status === 409){
+          duplicados++;
+        } else if(!res.ok){
+          erros++;
+        } else {
+          sucesso++;
+        }
+      }catch(e){
+        erros++;
+      }
+      statusEl.textContent = `Importando ${i+1}/${rows.length}...`;
+    }
+
+    statusEl.textContent = `Importação concluída: ${sucesso} adicionadas, ${duplicados} já existiam, ${erros} com erro.`;
+    event.target.value = '';
+    await loadItems();
+  }catch(e){
+    statusEl.textContent = 'Erro ao ler o arquivo: ' + e.message;
+    event.target.value = '';
+  }
+}
+
 function makeGradient(ctx, chartArea, colorTop, colorBottom){
   const gradient = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
   gradient.addColorStop(0, colorTop);
@@ -425,8 +488,11 @@ function render(){
         <select id="new-tipo"><option>Correção</option><option>Alteração</option></select>
         <input type="text" id="new-modulo" placeholder="Módulo" style="width:100px;">
         <input type="text" id="new-cliente" placeholder="Cliente">
-        <button onclick="addItem()">Adicionar</button>
+        <button class="btn-add" onclick="addItem()">Adicionar</button>
+        <button class="btn-import" onclick="document.getElementById('excel-input').click()">Importar Excel</button>
+        <input type="file" id="excel-input" accept=".xlsx,.xls" style="display:none;" onchange="importExcel(event)">
       </div>
+      <p id="import-status" style="font-size:12px;color:var(--muted);margin:8px 0 0;"></p>
     </div>
 
     <div class="panel">
