@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Progresso de correções</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<style>
+  :root{
+    --bg:#faf9f6;
+    --card:#ffffff;
+    --border:#e4e1d8;
+    --text:#22201b;
+    --muted:#75726a;
+    --alt-pend:#854f0b;
+    --alt-pend-bg:#faeeda;
+    --accent:#185fa5;
+    --purple:#7c5cff;
+    --purple-bg:#efeaff;
+    --yellow:#8a6d0a;
+    --yellow-bg:#fbf1cf;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    background:var(--bg);
+    color:var(--text);
+    padding:24px;
+  }
+  h1{font-size:20px;font-weight:600;margin:0 0 4px;}
+  .sub{color:var(--muted);font-size:13px;margin:0 0 4px;}
+  .conn{font-size:12px;margin:0 0 14px;}
+  .conn.ok{color:#0f6e56;}
+  .conn.fail{color:#a32d2d;}
+
+  .topnav{display:flex;gap:8px;margin-bottom:18px;}
+  .topnav button{
+    border:1px solid var(--border);background:#fff;border-radius:8px;
+    padding:8px 16px;font-size:13px;font-weight:600;cursor:pointer;color:var(--muted);
+  }
+  .topnav button.active{background:var(--text);border-color:var(--text);color:#fff;}
+
+  .tabs{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:18px;border-bottom:1px solid var(--border);padding-bottom:12px;}
+  .tab-btn{
+    border:1px solid var(--border);background:#fff;border-radius:20px;
+    padding:6px 14px;font-size:13px;cursor:pointer;color:var(--muted);font-weight:500;
+  }
+  .tab-btn:hover{background:#f2f0ea;}
+  .tab-btn.active{background:var(--accent);border-color:var(--accent);color:#fff;}
+
+  .cards{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:20px;}
+  .metric{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:12px 14px;position:relative;}
+  .metric .label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;}
+  .metric .value{font-size:22px;font-weight:600;margin-top:2px;}
+  .metric.clickable{cursor:pointer;}
+  .metric.clickable:hover{border-color:var(--accent);}
+  .progress-menu{
+    position:absolute;top:calc(100% + 6px);left:0;background:#fff;border:1px solid var(--border);
+    border-radius:10px;box-shadow:0 6px 18px rgba(0,0,0,0.08);padding:8px;z-index:20;width:230px;
+    display:none;
+  }
+  .progress-menu.open{display:block;}
+  .progress-menu .opt{
+    display:flex;align-items:center;gap:8px;padding:8px;border-radius:6px;font-size:12px;cursor:pointer;
+  }
+  .progress-menu .opt:hover{background:#f2f0ea;}
+  .progress-menu .opt.selected{background:var(--purple-bg);color:var(--purple);font-weight:600;}
+
+  .panel{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:16px;}
+  .panel h2{font-size:14px;font-weight:600;margin:0 0 12px;}
+  canvas{max-height:220px;}
+  #barChart{max-height:280px;}
+  table{width:100%;border-collapse:collapse;font-size:13px;}
+  th{text-align:left;font-size:11px;color:var(--muted);text-transform:uppercase;padding:6px 8px;border-bottom:1px solid var(--border);}
+  td{padding:7px 8px;border-bottom:1px solid var(--border);vertical-align:middle;}
+  tr:last-child td{border-bottom:none;}
+  .badge{display:inline-block;font-size:11px;padding:2px 8px;border-radius:6px;font-weight:500;}
+  select.status-select{
+    border:1px solid var(--border);border-radius:6px;padding:4px 6px;font-size:12px;
+    font-weight:500;cursor:pointer;background:#fff;
+  }
+  select.status-select.st-pendente{background:#f1efe8;color:#5f5e5a;}
+  select.status-select.st-testando{background:var(--yellow-bg);color:var(--yellow);}
+  select.status-select.st-baixado{background:#e1f5ee;color:#0f6e56;}
+  select.status-select.st-recusado{background:#fcebeb;color:#a32d2d;}
+  .row-recusado td{color:var(--muted);}
+  .add-row{display:flex;gap:8px;margin-top:12px;}
+  .add-row input, .add-row select{
+    border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:13px;background:#fff;
+  }
+  .add-row input[type=text]{flex:1;}
+  button{
+    border:1px solid var(--border);background:#fff;border-radius:6px;
+    padding:6px 12px;font-size:13px;cursor:pointer;
+  }
+  button:hover{background:#f2f0ea;}
+  .reset{float:right;font-size:12px;color:var(--muted);cursor:pointer;}
+  .loading{color:var(--muted);font-size:13px;}
+  .empty{color:var(--muted);font-size:13px;padding:16px 0;text-align:center;}
+  .error-box{background:#fcebeb;color:#a32d2d;border:1px solid #f0c6c6;border-radius:8px;padding:12px 14px;font-size:13px;margin-bottom:16px;}
+
+  .today-card{display:flex;gap:24px;align-items:center;}
+  .today-card .stat{display:flex;flex-direction:column;}
+  .today-card .stat .n{font-size:26px;font-weight:700;}
+  .today-card .stat.baixada .n{color:#0f6e56;}
+  .today-card .stat.recusada .n{color:#a32d2d;}
+  .today-card .stat .l{font-size:12px;color:var(--muted);}
+
+  .today-grids{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+  .today-grid-panel h3{font-size:13px;font-weight:600;margin:0 0 8px;display:flex;align-items:center;gap:8px;}
+  .today-grid-panel h3 .count{
+    background:var(--purple-bg);color:var(--purple);font-size:11px;font-weight:700;
+    padding:2px 8px;border-radius:12px;
+  }
+  .voltar-btn{
+    border:1px solid var(--border);background:#fff;border-radius:6px;
+    padding:3px 8px;font-size:11px;cursor:pointer;color:var(--accent);
+  }
+  .voltar-btn:hover{background:#eef4fb;}
+
+  .hist-filters{display:flex;gap:10px;align-items:end;margin-bottom:20px;flex-wrap:wrap;}
+  .hist-filters label{display:block;font-size:11px;color:var(--muted);margin-bottom:4px;text-transform:uppercase;}
+  .hist-filters input, .hist-filters select{
+    border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;background:#fff;
+  }
+  .hist-grid{display:grid;grid-template-columns:repeat(auto-fill, minmax(240px,1fr));gap:14px;}
+  .hist-card{background:#fff;border:1px solid var(--border);border-radius:14px;padding:16px;}
+  .hist-card .head{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:14px;}
+  .hist-card .name{font-weight:700;font-size:14px;line-height:1.3;}
+  .hist-card .total-badge{
+    background:var(--purple);color:#fff;font-size:12px;font-weight:700;
+    padding:4px 12px;border-radius:20px;white-space:nowrap;
+  }
+  .hist-card .row{display:flex;justify-content:space-between;font-size:13px;padding:4px 0;color:var(--muted);}
+  .hist-card .row b{color:var(--text);font-size:14px;}
+</style>
+</head>
+<body>
+
+<!-- ============================================================ -->
+<script>
+  const API_BASE_URL = "http://JNMDT076:3001/api"; // <-- endereço do computador rodando a API
+</script>
+<!-- ============================================================ -->
+
+<h1>Progresso de correções</h1>
+<p class="sub">Selecione o testador e marque os códigos conforme forem corrigidos.</p>
+<p id="conn" class="conn">Verificando conexão com o servidor...</p>
+
+<div class="topnav">
+  <button id="nav-painel" class="active" onclick="switchView('painel')">Painel</button>
+  <button id="nav-historico" onclick="switchView('historico')">Histórico</button>
+</div>
+
+<div id="view-painel">
+  <div id="tabs" class="tabs"></div>
+  <div id="app"><p class="loading">Carregando...</p></div>
+</div>
+
+<div id="view-historico" style="display:none;">
+  <div class="panel">
+    <div class="hist-filters">
+      <div>
+        <label>Data</label>
+        <input type="date" id="hist-data">
+      </div>
+      <div>
+        <label>Testador</label>
+        <select id="hist-testador"></select>
+      </div>
+      <div>
+        <button onclick="loadHistorico()">Filtrar</button>
+      </div>
+    </div>
+    <h2 id="hist-title">Correções validadas por QA</h2>
+    <div id="hist-grid" class="hist-grid"></div>
+  </div>
+</div>
+
+<script>
+const TESTERS = [
+  "Moretti", "Balduino", "Marcio", "Carol", "Amanda",
+  "Zanuto", "Matheus Estrella", "Mateus Cavalcante", "Guilherme", "Gabriel Adati"
+];
+
+let currentTester = TESTERS[0];
+let items = [];
+let barChart = null;
+let currentView = 'painel';
+let progressMode = localStorage.getItem('modoProgresso') || 'baixado'; // 'baixado' | 'baixado_recusado'
+
+function todayStr(){
+  const d = new Date();
+  const p = n => String(n).padStart(2,'0');
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`;
+}
+
+async function checkConnection(){
+  const el = document.getElementById('conn');
+  try{
+    const res = await fetch(`${API_BASE_URL}/health`);
+    const data = await res.json();
+    if(data.ok){
+      el.textContent = "Conectado ao banco de dados";
+      el.className = "conn ok";
+      return true;
+    }
+    throw new Error(data.error || 'falha desconhecida');
+  }catch(e){
+    el.textContent = `Não foi possível conectar à API (${API_BASE_URL}). Verifique se o servidor está rodando e o endereço está correto.`;
+    el.className = "conn fail";
+    return false;
+  }
+}
+
+function switchView(view){
+  currentView = view;
+  document.getElementById('nav-painel').classList.toggle('active', view==='painel');
+  document.getElementById('nav-historico').classList.toggle('active', view==='historico');
+  document.getElementById('view-painel').style.display = view==='painel' ? 'block' : 'none';
+  document.getElementById('view-historico').style.display = view==='historico' ? 'block' : 'none';
+  if(view==='historico') initHistorico();
+}
+
+/* ---------------- PAINEL ---------------- */
+
+function renderTabs(){
+  document.getElementById('tabs').innerHTML = TESTERS.map(t => `
+    <button class="tab-btn ${t===currentTester?'active':''}" onclick="switchTester('${t.replace(/'/g,"\\'")}')">${t}</button>
+  `).join('');
+}
+
+async function switchTester(name){
+  currentTester = name;
+  renderTabs();
+  document.getElementById('app').innerHTML = '<p class="loading">Carregando...</p>';
+  await loadItems();
+}
+
+async function loadItems(){
+  try{
+    const res = await fetch(`${API_BASE_URL}/items?testador=${encodeURIComponent(currentTester)}`);
+    if(!res.ok) throw new Error('Erro ao carregar dados');
+    const raw = await res.json();
+    items = raw.map(i => ({
+      id: i.id, codigo: i.codigo, tipo: i.tipo, modulo: i.modulo, cliente: i.cliente,
+      status: i.status, statusAt: i.status_em
+    }));
+    await loadTodayGrids();
+    render();
+  }catch(e){
+    document.getElementById('app').innerHTML = `<div class="error-box">Não foi possível carregar os dados do servidor. ${e.message}</div>`;
+  }
+}
+
+let baixadosHoje = [];
+let recusadosHoje = [];
+async function loadTodayGrids(){
+  try{
+    const [resB, resR] = await Promise.all([
+      fetch(`${API_BASE_URL}/items/hoje?testador=${encodeURIComponent(currentTester)}&status=baixado`),
+      fetch(`${API_BASE_URL}/items/hoje?testador=${encodeURIComponent(currentTester)}&status=recusado`)
+    ]);
+    baixadosHoje = resB.ok ? await resB.json() : [];
+    recusadosHoje = resR.ok ? await resR.json() : [];
+  }catch(e){
+    baixadosHoje = [];
+    recusadosHoje = [];
+  }
+}
+
+async function setStatus(id, status){
+  try{
+    const res = await fetch(`${API_BASE_URL}/items/${id}`, {
+      method: 'PATCH',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({status})
+    });
+    if(!res.ok) throw new Error('Falha ao atualizar status');
+    await loadItems();
+  }catch(e){
+    alert('Erro ao atualizar status: ' + e.message);
+  }
+}
+
+async function removeItem(id){
+  if(!confirm('Remover esta atividade?')) return;
+  try{
+    const res = await fetch(`${API_BASE_URL}/items/${id}`, { method: 'DELETE' });
+    if(!res.ok) throw new Error('Falha ao remover');
+    await loadItems();
+  }catch(e){
+    alert('Erro ao remover: ' + e.message);
+  }
+}
+
+async function addItem(){
+  const codigo = document.getElementById('new-codigo').value.trim();
+  const tipo = document.getElementById('new-tipo').value;
+  const modulo = document.getElementById('new-modulo').value.trim();
+  const cliente = document.getElementById('new-cliente').value.trim();
+  if(!codigo) return;
+  try{
+    const res = await fetch(`${API_BASE_URL}/items`, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ testador: currentTester, codigo, tipo, modulo, cliente })
+    });
+    const data = await res.json();
+    if(!res.ok) throw new Error(data.error || 'Falha ao adicionar');
+    document.getElementById('new-codigo').value = '';
+    document.getElementById('new-modulo').value = '';
+    document.getElementById('new-cliente').value = '';
+    await loadItems();
+  }catch(e){
+    alert('Erro ao adicionar: ' + e.message);
+  }
+}
+
+function makeGradient(ctx, chartArea, colorTop, colorBottom){
+  const gradient = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
+  gradient.addColorStop(0, colorTop);
+  gradient.addColorStop(1, colorBottom);
+  return gradient;
+}
+
+function toggleProgressMenu(ev){
+  ev.stopPropagation();
+  const menu = document.getElementById('progress-menu');
+  menu.classList.toggle('open');
+}
+function setProgressMode(mode){
+  progressMode = mode;
+  localStorage.setItem('modoProgresso', mode);
+  render();
+}
+document.addEventListener('click', () => {
+  const menu = document.getElementById('progress-menu');
+  if(menu) menu.classList.remove('open');
+});
+
+function render(){
+  // Fila principal: só o que ainda está em aberto (recusado e baixado saem pra suas grades)
+  const fila = items.filter(i => i.status === 'pendente' || i.status === 'testando');
+
+  const pendentes = fila.filter(i=>i.status==='pendente').length;
+  const testando = fila.filter(i=>i.status==='testando').length;
+  const baixadosCount = baixadosHoje.length;
+  const recusadosCount = recusadosHoje.length;
+  const total = pendentes + testando + baixadosCount + recusadosCount;
+
+  const numerador = progressMode === 'baixado_recusado' ? (baixadosCount + recusadosCount) : baixadosCount;
+  const pct = total ? Math.round((numerador/total)*100) : 0;
+
+  const rowsHtml = fila.length ? fila.map(it=>`
+    <tr class="row-${it.status}">
+      <td>${it.codigo}</td>
+      <td><span class="badge" style="${it.tipo==='Alteração' ? 'background:var(--alt-pend-bg);color:var(--alt-pend);' : 'background:#e6f1fb;color:#0c447c;'}">${it.tipo}</span></td>
+      <td>${it.modulo || '-'}</td>
+      <td>${it.cliente || '-'}</td>
+      <td>
+        <select class="status-select st-${it.status}" onchange="setStatus(${it.id}, this.value)">
+          <option value="pendente" ${it.status==='pendente'?'selected':''}>Pendente</option>
+          <option value="testando" ${it.status==='testando'?'selected':''}>Testando</option>
+          <option value="baixado" ${it.status==='baixado'?'selected':''}>Baixado</option>
+          <option value="recusado" ${it.status==='recusado'?'selected':''}>Recusado</option>
+        </select>
+      </td>
+      <td><span class="reset" onclick="removeItem(${it.id})">remover</span></td>
+    </tr>
+  `).join('') : '';
+
+  const baixadosRows = baixadosHoje.length ? baixadosHoje.map(it => `
+    <tr>
+      <td>${it.codigo}</td>
+      <td>${it.modulo || '-'}</td>
+      <td>${it.cliente || '-'}</td>
+    </tr>
+  `).join('') : `<tr><td colspan="3" class="empty">Nada baixado hoje ainda.</td></tr>`;
+
+  const recusadosRows = recusadosHoje.length ? recusadosHoje.map(it => `
+    <tr>
+      <td>${it.codigo}</td>
+      <td>${it.modulo || '-'}</td>
+      <td>${it.cliente || '-'}</td>
+      <td><button class="voltar-btn" onclick="setStatus(${it.id}, 'pendente')">Voltar para Fila</button></td>
+    </tr>
+  `).join('') : `<tr><td colspan="4" class="empty">Nada recusado hoje ainda.</td></tr>`;
+
+  document.getElementById('app').innerHTML = `
+    <div class="cards">
+      <div class="metric"><div class="label">Total (hoje)</div><div class="value">${total}</div></div>
+      <div class="metric"><div class="label">Baixados (hoje)</div><div class="value">${baixadosCount}</div></div>
+      <div class="metric"><div class="label">Recusados (hoje)</div><div class="value">${recusadosCount}</div></div>
+      <div class="metric"><div class="label">Testando</div><div class="value">${testando}</div></div>
+      <div class="metric"><div class="label">Pendentes</div><div class="value">${pendentes}</div></div>
+      <div class="metric clickable" onclick="toggleProgressMenu(event)">
+        <div class="label">Progresso ▾</div>
+        <div class="value">${pct}%</div>
+        <div id="progress-menu" class="progress-menu">
+          <div class="opt ${progressMode==='baixado'?'selected':''}" onclick="setProgressMode('baixado')">Somente Baixado conta</div>
+          <div class="opt ${progressMode==='baixado_recusado'?'selected':''}" onclick="setProgressMode('baixado_recusado')">Baixado + Recusado conta</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Quantidades por tipo — ${currentTester} (hoje)</h2>
+      <canvas id="barChart"></canvas>
+    </div>
+
+    <div class="panel">
+      <h2>Fila de ${currentTester}</h2>
+      ${fila.length ? `
+      <table>
+        <thead><tr><th>Código</th><th>Tipo</th><th>Módulo</th><th>Cliente</th><th>Status</th><th></th></tr></thead>
+        <tbody>${rowsHtml}</tbody>
+      </table>` : '<p class="empty">Nenhuma atividade pendente. Adicione um código abaixo.</p>'}
+      <div class="add-row">
+        <input type="text" id="new-codigo" placeholder="Código">
+        <select id="new-tipo"><option>Correção</option><option>Alteração</option></select>
+        <input type="text" id="new-modulo" placeholder="Módulo" style="width:100px;">
+        <input type="text" id="new-cliente" placeholder="Cliente">
+        <button onclick="addItem()">Adicionar</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Atividades de hoje — ${currentTester}</h2>
+      <div class="today-grids">
+        <div class="today-grid-panel">
+          <h3>Baixados hoje <span class="count">${baixadosCount}</span></h3>
+          <table>
+            <thead><tr><th>Código</th><th>Módulo</th><th>Cliente</th></tr></thead>
+            <tbody>${baixadosRows}</tbody>
+          </table>
+        </div>
+        <div class="today-grid-panel">
+          <h3>Recusados hoje <span class="count">${recusadosCount}</span></h3>
+          <table>
+            <thead><tr><th>Código</th><th>Módulo</th><th>Cliente</th><th></th></tr></thead>
+            <tbody>${recusadosRows}</tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  `;
+
+  const tipos = [...new Set([...fila, ...baixadosHoje, ...recusadosHoje].map(i=>i.tipo))];
+  const barCtx = document.getElementById('barChart');
+  if(barChart) barChart.destroy();
+  if(tipos.length === 0) return;
+
+  const baixadoByTipo = tipos.map(t=>baixadosHoje.filter(i=>i.tipo===t).length);
+  const recusadoByTipo = tipos.map(t=>recusadosHoje.filter(i=>i.tipo===t).length);
+  const testandoByTipo = tipos.map(t=>fila.filter(i=>i.tipo===t && i.status==='testando').length);
+  const pendenteByTipo = tipos.map(t=>fila.filter(i=>i.tipo===t && i.status==='pendente').length);
+
+  barChart = new Chart(barCtx, {
+    type:'bar',
+    data:{
+      labels: tipos,
+      datasets:[
+        { label:'Baixado', data: baixadoByTipo, borderRadius:8,
+          backgroundColor: (c)=> c.chart.chartArea ? makeGradient(c.chart.ctx, c.chart.chartArea, '#7fdcb8', '#0f6e56') : '#5dcaa5' },
+        { label:'Recusado', data: recusadoByTipo, borderRadius:8,
+          backgroundColor: (c)=> c.chart.chartArea ? makeGradient(c.chart.ctx, c.chart.chartArea, '#f3b3b3', '#a32d2d') : '#e24b4a' },
+        { label:'Testando', data: testandoByTipo, borderRadius:8,
+          backgroundColor: (c)=> c.chart.chartArea ? makeGradient(c.chart.ctx, c.chart.chartArea, '#f5dd8f', '#8a6d0a') : '#e0c34a' },
+        { label:'Pendente', data: pendenteByTipo, borderRadius:8,
+          backgroundColor: (c)=> c.chart.chartArea ? makeGradient(c.chart.ctx, c.chart.chartArea, '#d3d1c7', '#5f5e5a') : '#b4b2a9' }
+      ]
+    },
+    options:{
+      responsive:true,
+      maintainAspectRatio:false,
+      plugins:{ legend:{ position:'bottom', labels:{ boxWidth:12, padding:16 } } },
+      scales:{
+        y:{ beginAtZero:true, ticks:{ stepSize:1, precision:0 }, grid:{ color:'#f0eee6' } },
+        x:{ grid:{ display:false } }
+      }
+    }
+  });
+}
+
+/* ---------------- HISTÓRICO ---------------- */
+
+function initHistorico(){
+  const dataInput = document.getElementById('hist-data');
+  if(!dataInput.value) dataInput.value = todayStr();
+
+  const sel = document.getElementById('hist-testador');
+  if(!sel.dataset.filled){
+    sel.innerHTML = `<option value="Todos">Todos os testadores</option>` +
+      TESTERS.map(t => `<option value="${t}">${t}</option>`).join('');
+    sel.dataset.filled = '1';
+  }
+  loadHistorico();
+}
+
+async function loadHistorico(){
+  const data = document.getElementById('hist-data').value || todayStr();
+  const testador = document.getElementById('hist-testador').value || 'Todos';
+  const grid = document.getElementById('hist-grid');
+  const title = document.getElementById('hist-title');
+  const [y,m,d] = data.split('-');
+  title.textContent = `Correções validadas por QA (${d}/${m}/${y})`;
+  grid.innerHTML = '<p class="loading">Carregando...</p>';
+
+  try{
+    const res = await fetch(`${API_BASE_URL}/historico?data=${data}&testador=${encodeURIComponent(testador)}`);
+    if(!res.ok) throw new Error('Erro ao carregar histórico');
+    const rows = await res.json();
+
+    if(!rows.length){
+      grid.innerHTML = '<p class="empty">Nenhuma baixa ou recusa registrada nessa data.</p>';
+      return;
+    }
+
+    grid.innerHTML = rows.map(r => `
+      <div class="hist-card">
+        <div class="head">
+          <div class="name">${r.testador}</div>
+          <div class="total-badge">Total ${r.baixadas + r.recusas}</div>
+        </div>
+        <div class="row"><span>Baixada</span><b>${r.baixadas}</b></div>
+        <div class="row"><span>Recusa</span><b>${r.recusas}</b></div>
+      </div>
+    `).join('');
+  }catch(e){
+    grid.innerHTML = `<div class="error-box">${e.message}</div>`;
+  }
+}
+
+/* ---------------- INIT ---------------- */
+
+(async function init(){
+  renderTabs();
+  await checkConnection();
+  await loadItems();
+})();
+</script>
+</body>
+</html>

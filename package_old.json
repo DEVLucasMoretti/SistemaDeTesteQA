@@ -1,0 +1,15 @@
+{
+  "name": "progresso-correcoes-api",
+  "version": "1.0.0",
+  "description": "API que conecta o painel de progresso de correções ao SQL Server (130_QA)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "mssql": "^11.0.1"
+  }
+}
