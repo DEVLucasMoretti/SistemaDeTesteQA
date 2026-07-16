@@ -1,0 +1,2 @@
+API rodando na porta 3001
+Teste em: http://localhost:3001/api/health
