@@ -186,6 +186,91 @@ app.get('/api/historico/resumo', async (req, res) => {
   }
 });
 
+// Desfaz uma baixa feita sem querer: volta pra fila E remove do histórico de hoje
+// (diferente de uma recusa devolvida à fila, que continua contando no relatório)
+app.post('/api/items/:id/desfazer-baixa', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const pool = await getPool();
+
+    const current = await pool.request()
+      .input('id', sql.Int, id)
+      .query("SELECT testador, codigo, status FROM dbo.TestesQA WHERE id = @id");
+
+    if (current.recordset.length === 0) {
+      return res.status(404).json({ error: 'Atividade não encontrada' });
+    }
+    const { testador, codigo, status } = current.recordset[0];
+    if (status !== 'baixado') {
+      return res.status(400).json({ error: 'Esta atividade não está com status baixado' });
+    }
+
+    await pool.request()
+      .input('id', sql.Int, id)
+      .query("UPDATE dbo.TestesQA SET status = 'pendente', status_em = NULL WHERE id = @id");
+
+    await pool.request()
+      .input('testador', sql.NVarChar, testador)
+      .input('codigo', sql.NVarChar, codigo)
+      .query(`DELETE FROM dbo.TestesQAHistorico
+              WHERE testador = @testador AND codigo = @codigo AND status = 'baixado'
+                AND CAST(registrado_em AS DATE) = CAST(GETDATE() AS DATE)`);
+
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Histórico discriminado (linha a linha), filtrando por testador e por tipo/status
+app.get('/api/historico/detalhado', async (req, res) => {
+  const { testador, filtro } = req.query;
+  try {
+    const pool = await getPool();
+    const request = pool.request();
+    let where = 'WHERE 1=1';
+
+    if (testador && testador !== 'Todos') {
+      request.input('testador', sql.NVarChar, testador);
+      where += ' AND testador = @testador';
+    }
+    if (filtro === 'baixa') {
+      where += " AND status = 'baixado'";
+    } else if (filtro === 'recusa') {
+      where += " AND status = 'recusado'";
+    } else if (filtro === 'alteracao') {
+      request.input('tipoAlteracao', sql.NVarChar, 'Alteração');
+      where += ' AND tipo = @tipoAlteracao';
+    }
+
+    const result = await request.query(`
+      SELECT id, testador, codigo, tipo, status, registrado_em, observacao
+      FROM dbo.TestesQAHistorico
+      ${where}
+      ORDER BY registrado_em DESC
+    `);
+    res.json(result.recordset);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Salva/edita a observação de uma linha do histórico
+app.patch('/api/historico/:id', async (req, res) => {
+  const { id } = req.params;
+  const { observacao } = req.body;
+  try {
+    const pool = await getPool();
+    await pool.request()
+      .input('id', sql.Int, id)
+      .input('observacao', sql.NVarChar, observacao || null)
+      .query('UPDATE dbo.TestesQAHistorico SET observacao = @observacao WHERE id = @id');
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Itens baixados ou recusados HOJE por um testador (grades que resetam no dia seguinte)
 app.get('/api/items/hoje', async (req, res) => {
   const { testador, status } = req.query;

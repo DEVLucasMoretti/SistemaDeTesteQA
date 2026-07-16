@@ -185,6 +185,7 @@
 <div class="topnav">
   <button id="nav-painel" class="active" onclick="switchView('painel')">Painel</button>
   <button id="nav-historico" onclick="switchView('historico')">Histórico</button>
+  <button id="nav-detalhado" onclick="switchView('detalhado')">Histórico Discriminado</button>
   <button id="theme-toggle" class="theme-toggle" onclick="toggleTheme()" style="margin-left:auto;">🌙 Modo escuro</button>
 </div>
 
@@ -210,6 +211,34 @@
     </div>
     <h2 id="hist-title">Correções validadas por QA</h2>
     <div id="hist-grid" class="hist-grid"></div>
+  </div>
+</div>
+
+<div id="view-detalhado" style="display:none;">
+  <div class="panel">
+    <div class="hist-filters">
+      <div>
+        <label>Testador</label>
+        <select id="det-testador"></select>
+      </div>
+      <div>
+        <label>Tipo</label>
+        <select id="det-filtro">
+          <option value="todas">Todas</option>
+          <option value="baixa">Baixa</option>
+          <option value="recusa">Recusa</option>
+          <option value="alteracao">Alteração</option>
+        </select>
+      </div>
+      <div>
+        <button onclick="loadDetalhado()">Filtrar</button>
+      </div>
+    </div>
+    <h2>Histórico Discriminado</h2>
+    <table>
+      <thead><tr><th>Data/Hora</th><th>Testador</th><th>Código</th><th>Tipo</th><th>Status</th><th>Observação</th></tr></thead>
+      <tbody id="det-body"></tbody>
+    </table>
   </div>
 </div>
 
@@ -266,9 +295,12 @@ function switchView(view){
   currentView = view;
   document.getElementById('nav-painel').classList.toggle('active', view==='painel');
   document.getElementById('nav-historico').classList.toggle('active', view==='historico');
+  document.getElementById('nav-detalhado').classList.toggle('active', view==='detalhado');
   document.getElementById('view-painel').style.display = view==='painel' ? 'block' : 'none';
   document.getElementById('view-historico').style.display = view==='historico' ? 'block' : 'none';
+  document.getElementById('view-detalhado').style.display = view==='detalhado' ? 'block' : 'none';
   if(view==='historico') initHistorico();
+  if(view==='detalhado') initDetalhado();
 }
 
 /* ---------------- PAINEL ---------------- */
@@ -319,6 +351,18 @@ async function loadTodayGrids(){
     baixadosHoje = [];
     recusadosHoje = [];
     resumoHoje = { porTipo: [], totalBaixados: 0, totalRecusados: 0 };
+  }
+}
+
+async function desfazerBaixa(id){
+  if(!confirm('Desfazer esta baixa? Ela vai voltar pra fila e sair do relatório de hoje.')) return;
+  try{
+    const res = await fetch(`${API_BASE_URL}/items/${id}/desfazer-baixa`, { method: 'POST' });
+    const data = await res.json();
+    if(!res.ok) throw new Error(data.error || 'Falha ao desfazer');
+    await loadItems();
+  }catch(e){
+    alert('Erro ao desfazer baixa: ' + e.message);
   }
 }
 
@@ -517,8 +561,9 @@ function render(){
       <td>${it.codigo}</td>
       <td>${it.modulo || '-'}</td>
       <td>${it.cliente || '-'}</td>
+      <td><button class="voltar-btn" onclick="desfazerBaixa(${it.id})" title="Use se baixou sem querer — remove do relatório de hoje">Voltar para Fila</button></td>
     </tr>
-  `).join('') : `<tr><td colspan="3" class="empty">Nada baixado hoje ainda.</td></tr>`;
+  `).join('') : `<tr><td colspan="4" class="empty">Nada baixado hoje ainda.</td></tr>`;
 
   const recusadosRows = recusadosHoje.length ? recusadosHoje.map(it => `
     <tr>
@@ -579,7 +624,7 @@ function render(){
         <div class="today-grid-panel">
           <h3>Baixados hoje <span class="count">${baixadosHoje.length}</span></h3>
           <table>
-            <thead><tr><th>Código</th><th>Módulo</th><th>Cliente</th></tr></thead>
+            <thead><tr><th>Código</th><th>Módulo</th><th>Cliente</th><th></th></tr></thead>
             <tbody>${baixadosRows}</tbody>
           </table>
         </div>
@@ -681,6 +726,79 @@ async function loadHistorico(){
     `).join('');
   }catch(e){
     grid.innerHTML = `<div class="error-box">${e.message}</div>`;
+  }
+}
+
+/* ---------------- HISTÓRICO DISCRIMINADO ---------------- */
+
+function initDetalhado(){
+  const sel = document.getElementById('det-testador');
+  if(!sel.dataset.filled){
+    sel.innerHTML = `<option value="Todos">Todos os testadores</option>` +
+      TESTERS.map(t => `<option value="${t}">${t}</option>`).join('');
+    sel.dataset.filled = '1';
+  }
+  loadDetalhado();
+}
+
+function formatDataHora(iso){
+  if(!iso) return '-';
+  const d = new Date(iso);
+  const p = n => String(n).padStart(2,'0');
+  return `${p(d.getDate())}/${p(d.getMonth()+1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+async function loadDetalhado(){
+  const testador = document.getElementById('det-testador').value || 'Todos';
+  const filtro = document.getElementById('det-filtro').value || 'todas';
+  const body = document.getElementById('det-body');
+  body.innerHTML = `<tr><td colspan="6" class="loading">Carregando...</td></tr>`;
+
+  try{
+    const res = await fetch(`${API_BASE_URL}/historico/detalhado?testador=${encodeURIComponent(testador)}&filtro=${filtro}`);
+    if(!res.ok) throw new Error('Erro ao carregar histórico');
+    const rows = await res.json();
+
+    if(!rows.length){
+      body.innerHTML = `<tr><td colspan="6" class="empty">Nenhum registro encontrado.</td></tr>`;
+      return;
+    }
+
+    body.innerHTML = rows.map(r => `
+      <tr>
+        <td>${formatDataHora(r.registrado_em)}</td>
+        <td>${r.testador}</td>
+        <td>${r.codigo}</td>
+        <td><span class="badge" style="${r.tipo==='Alteração' ? 'background:var(--alt-pend-bg);color:var(--alt-pend);' : 'background:#e6f1fb;color:#0c447c;'}">${r.tipo || '-'}</span></td>
+        <td><span class="status-select st-${r.status}" style="display:inline-block;padding:4px 6px;border-radius:6px;">${r.status === 'baixado' ? 'Baixado' : 'Recusado'}</span></td>
+        <td>
+          <input type="text" class="obs-input" data-id="${r.id}" value="${(r.observacao || '').replace(/"/g,'&quot;')}"
+                 placeholder="Clique e digite, Enter para salvar"
+                 style="width:100%;border:1px solid var(--border);border-radius:6px;padding:4px 6px;font-size:12px;background:var(--card);color:var(--text);"
+                 onkeydown="if(event.key==='Enter'){ salvarObservacao(${r.id}, this.value, this); }">
+        </td>
+      </tr>
+    `).join('');
+  }catch(e){
+    body.innerHTML = `<tr><td colspan="6"><div class="error-box">${e.message}</div></td></tr>`;
+  }
+}
+
+async function salvarObservacao(id, valor, inputEl){
+  const originalBorder = inputEl.style.borderColor;
+  try{
+    const res = await fetch(`${API_BASE_URL}/historico/${id}`, {
+      method: 'PATCH',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ observacao: valor })
+    });
+    if(!res.ok) throw new Error('Falha ao salvar');
+    inputEl.style.borderColor = '#0f6e56';
+    inputEl.blur();
+    setTimeout(() => { inputEl.style.borderColor = originalBorder; }, 1200);
+  }catch(e){
+    inputEl.style.borderColor = '#a32d2d';
+    alert('Erro ao salvar observação: ' + e.message);
   }
 }
 
