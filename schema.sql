@@ -16,8 +16,16 @@ BEGIN
         status      NVARCHAR(20)  NOT NULL DEFAULT 'pendente', -- pendente | testando | baixado | recusado
         status_em   DATETIME      NULL,
         criado_em   DATETIME      NOT NULL DEFAULT GETDATE(),
+        observacao  NVARCHAR(1000) NULL,
         CONSTRAINT UQ_testador_codigo UNIQUE (testador, codigo)
     );
+END
+GO
+
+-- Caso a tabela já exista de uma versão anterior, garante que a coluna de observação existe
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'observacao' AND Object_ID = Object_ID('dbo.TestesQA'))
+BEGIN
+    ALTER TABLE dbo.TestesQA ADD observacao NVARCHAR(1000) NULL;
 END
 GO
 

@@ -74,7 +74,7 @@ app.get('/api/items', async (req, res) => {
     const pool = await getPool();
     const result = await pool.request()
       .input('testador', sql.NVarChar, testador)
-      .query('SELECT id, testador, codigo, tipo, modulo, cliente, status, status_em FROM dbo.TestesQA WHERE testador = @testador ORDER BY id');
+      .query('SELECT id, testador, codigo, tipo, modulo, cliente, status, status_em, observacao FROM dbo.TestesQA WHERE testador = @testador ORDER BY id');
     res.json(result.recordset);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -102,6 +102,22 @@ app.post('/api/items', async (req, res) => {
     if (err.number === 2627 || err.number === 2601) {
       return res.status(409).json({ error: 'Este código já existe para este testador' });
     }
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Salva a observação de uma atividade da fila
+app.patch('/api/items/:id/observacao', async (req, res) => {
+  const { id } = req.params;
+  const { observacao } = req.body;
+  try {
+    const pool = await getPool();
+    await pool.request()
+      .input('id', sql.Int, id)
+      .input('observacao', sql.NVarChar, observacao || null)
+      .query('UPDATE dbo.TestesQA SET observacao = @observacao WHERE id = @id');
+    res.json({ ok: true });
+  } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });

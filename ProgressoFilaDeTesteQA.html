@@ -174,6 +174,32 @@
   body.dark .theme-toggle:hover{background:#2a2b2f;}
   .voltar-btn:hover{background:#eef4fb;}
 
+  .obs-icon{
+    cursor:pointer;font-size:15px;background:none;border:none;padding:2px 4px;
+    color:var(--muted);
+  }
+  .obs-icon:hover{color:var(--accent);}
+  .obs-icon.has-note{color:var(--purple);}
+
+  .modal-overlay{
+    display:none;position:fixed;inset:0;background:rgba(0,0,0,0.45);
+    align-items:center;justify-content:center;z-index:100;
+  }
+  .modal-overlay.open{display:flex;}
+  .modal-box{
+    background:var(--card);border:1px solid var(--border);border-radius:14px;
+    padding:20px;width:480px;max-width:90vw;box-shadow:0 10px 30px rgba(0,0,0,0.2);
+  }
+  .modal-box h3{margin:0 0 4px;font-size:15px;}
+  .modal-box .modal-sub{font-size:12px;color:var(--muted);margin:0 0 14px;}
+  .modal-box textarea{
+    width:100%;min-height:140px;border:1px solid var(--border);border-radius:8px;
+    padding:10px;font-size:13px;font-family:inherit;background:var(--card);color:var(--text);
+    resize:vertical;box-sizing:border-box;
+  }
+  .modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:14px;}
+  .modal-actions .btn-salvar{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600;}
+
   .hist-filters{display:flex;gap:10px;align-items:end;margin-bottom:20px;flex-wrap:wrap;}
   .hist-filters label{display:block;font-size:11px;color:var(--muted);margin-bottom:4px;text-transform:uppercase;}
   .hist-filters input, .hist-filters select{
@@ -455,6 +481,73 @@ function normalizeHeader(s){
     .toLowerCase().trim();
 }
 
+let modalObsContexto = null; // { tipo: 'item'|'historico', id }
+let ultimoDetalhadoRows = [];
+
+function abrirModalObsItem(id){
+  const it = items.find(i => i.id === id);
+  if(!it) return;
+  abrirModalObs('item', id, it.observacao || '', it.codigo);
+}
+
+function abrirModalObsHistorico(id){
+  const r = ultimoDetalhadoRows.find(r => r.id === id);
+  if(!r) return;
+  abrirModalObs('historico', id, r.observacao || '', r.codigo);
+}
+
+function abrirModalObs(tipo, id, valorAtual, codigo){
+  modalObsContexto = { tipo, id };
+  document.getElementById('obs-modal-titulo').textContent = 'Observação';
+  document.getElementById('obs-modal-sub').textContent = codigo ? `Atividade ${codigo}` : '';
+  document.getElementById('obs-modal-texto').value = valorAtual || '';
+  document.getElementById('obs-modal').classList.add('open');
+  setTimeout(() => document.getElementById('obs-modal-texto').focus(), 50);
+}
+
+function fecharModalObs(){
+  document.getElementById('obs-modal').classList.remove('open');
+  modalObsContexto = null;
+}
+
+async function salvarModalObs(){
+  if(!modalObsContexto) return;
+  const valor = document.getElementById('obs-modal-texto').value;
+  const { tipo, id } = modalObsContexto;
+
+  try{
+    let url, body;
+    if(tipo === 'item'){
+      url = `${API_BASE_URL}/items/${id}/observacao`;
+      body = { observacao: valor };
+    } else {
+      url = `${API_BASE_URL}/historico/${id}`;
+      body = { observacao: valor };
+    }
+    const res = await fetch(url, {
+      method: 'PATCH',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(body)
+    });
+    if(!res.ok) throw new Error('Falha ao salvar');
+
+    fecharModalObs();
+    if(tipo === 'item'){
+      await loadItems();
+    } else {
+      await loadDetalhado();
+    }
+  }catch(e){
+    alert('Erro ao salvar observação: ' + e.message);
+  }
+}
+
+document.addEventListener('keydown', (e) => {
+  if(e.key === 'Escape' && document.getElementById('obs-modal').classList.contains('open')){
+    fecharModalObs();
+  }
+});
+
 async function importExcel(event){
   const file = event.target.files[0];
   if(!file) return;
@@ -587,6 +680,10 @@ function render(){
           <option value="recusado" ${it.status==='recusado'?'selected':''}>Recusado</option>
         </select>
       </td>
+      <td>
+        <button class="obs-icon ${it.observacao ? 'has-note' : ''}" title="${it.observacao ? 'Ver/editar anotação' : 'Adicionar anotação'}"
+                onclick="abrirModalObsItem(${it.id})">📝</button>
+      </td>
       <td><span class="reset" onclick="removeItem(${it.id})">remover</span></td>
     </tr>
   `).join('') : '';
@@ -635,7 +732,7 @@ function render(){
       <h2>Fila de ${currentTester}</h2>
       ${fila.length ? `
       <table>
-        <thead><tr><th>Código</th><th>Tipo</th><th>Módulo</th><th>Cliente</th><th>Status</th><th></th></tr></thead>
+        <thead><tr><th>Código</th><th>Tipo</th><th>Módulo</th><th>Cliente</th><th>Status</th><th></th><th></th></tr></thead>
         <tbody>${rowsHtml}</tbody>
       </table>` : '<p class="empty">Nenhuma atividade pendente. Adicione um código abaixo.</p>'}
       <div class="add-row">
@@ -833,6 +930,7 @@ async function loadDetalhado(){
     const res = await fetch(url);
     if(!res.ok) throw new Error('Erro ao carregar histórico');
     const rows = await res.json();
+    ultimoDetalhadoRows = rows;
 
     if(!rows.length){
       body.innerHTML = `<tr><td colspan="7" class="empty">Nenhum registro encontrado.</td></tr>`;
@@ -852,10 +950,8 @@ async function loadDetalhado(){
           </select>
         </td>
         <td>
-          <input type="text" class="obs-input" data-id="${r.id}" value="${(r.observacao || '').replace(/"/g,'&quot;')}"
-                 placeholder="Clique e digite, Enter para salvar"
-                 style="width:100%;border:1px solid var(--border);border-radius:6px;padding:4px 6px;font-size:12px;background:var(--card);color:var(--text);"
-                 onkeydown="if(event.key==='Enter'){ salvarObservacao(${r.id}, this.value, this); }">
+          <button class="obs-icon ${r.observacao ? 'has-note' : ''}" title="${r.observacao ? 'Ver/editar observação' : 'Adicionar observação'}"
+                  onclick="abrirModalObsHistorico(${r.id})">📝 ${r.observacao ? 'Ver' : 'Adicionar'}</button>
         </td>
       </tr>
     `).join('');
@@ -905,5 +1001,17 @@ async function salvarObservacao(id, valor, inputEl){
   await loadItems();
 })();
 </script>
+<div id="obs-modal" class="modal-overlay" onclick="if(event.target===this) fecharModalObs()">
+  <div class="modal-box">
+    <h3 id="obs-modal-titulo">Observação</h3>
+    <p class="modal-sub" id="obs-modal-sub"></p>
+    <textarea id="obs-modal-texto" placeholder="Escreva sua anotação aqui..."></textarea>
+    <div class="modal-actions">
+      <button onclick="fecharModalObs()">Cancelar</button>
+      <button class="btn-salvar" onclick="salvarModalObs()">Salvar</button>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>
