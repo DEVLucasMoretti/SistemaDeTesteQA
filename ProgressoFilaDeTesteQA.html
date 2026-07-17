@@ -175,11 +175,11 @@
   .voltar-btn:hover{background:#eef4fb;}
 
   .obs-icon{
-    cursor:pointer;font-size:15px;background:none;border:none;padding:2px 4px;
-    color:var(--muted);
+    cursor:pointer;font-size:12px;background:var(--card);border:1px solid var(--border);border-radius:6px;
+    padding:4px 8px;color:var(--muted);white-space:nowrap;
   }
-  .obs-icon:hover{color:var(--accent);}
-  .obs-icon.has-note{color:var(--purple);}
+  .obs-icon:hover{color:var(--accent);border-color:var(--accent);}
+  .obs-icon.has-note{color:var(--purple);border-color:var(--purple);background:var(--purple-bg);}
 
   .modal-overlay{
     display:none;position:fixed;inset:0;background:rgba(0,0,0,0.45);
@@ -199,6 +199,15 @@
   }
   .modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:14px;}
   .modal-actions .btn-salvar{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600;}
+
+  .toast{
+    position:fixed;top:20px;right:20px;background:#0f6e56;color:#fff;
+    padding:12px 18px;border-radius:10px;font-size:13px;font-weight:600;
+    box-shadow:0 8px 20px rgba(0,0,0,0.25);z-index:200;
+    opacity:0;transform:translateY(-10px);transition:opacity .2s, transform .2s;
+    display:flex;align-items:center;gap:8px;
+  }
+  .toast.show{opacity:1;transform:translateY(0);}
 
   .hist-filters{display:flex;gap:10px;align-items:end;margin-bottom:20px;flex-wrap:wrap;}
   .hist-filters label{display:block;font-size:11px;color:var(--muted);margin-bottom:4px;text-transform:uppercase;}
@@ -386,7 +395,7 @@ async function loadItems(){
     const raw = await res.json();
     items = raw.map(i => ({
       id: i.id, codigo: i.codigo, tipo: i.tipo, modulo: i.modulo, cliente: i.cliente,
-      status: i.status, statusAt: i.status_em
+      status: i.status, statusAt: i.status_em, observacao: i.observacao
     }));
     await loadTodayGrids();
     render();
@@ -481,11 +490,20 @@ function normalizeHeader(s){
     .toLowerCase().trim();
 }
 
+let toastTimeout = null;
+function showToast(mensagem){
+  const toast = document.getElementById('toast');
+  toast.textContent = '✅ ' + mensagem;
+  toast.classList.add('show');
+  clearTimeout(toastTimeout);
+  toastTimeout = setTimeout(() => toast.classList.remove('show'), 2500);
+}
+
 let modalObsContexto = null; // { tipo: 'item'|'historico', id }
 let ultimoDetalhadoRows = [];
 
 function abrirModalObsItem(id){
-  const it = items.find(i => i.id === id);
+  const it = items.find(i => i.id === id) || baixadosHoje.find(i => i.id === id) || recusadosHoje.find(i => i.id === id);
   if(!it) return;
   abrirModalObs('item', id, it.observacao || '', it.codigo);
 }
@@ -532,6 +550,7 @@ async function salvarModalObs(){
     if(!res.ok) throw new Error('Falha ao salvar');
 
     fecharModalObs();
+    showToast('Anotação salva com sucesso');
     if(tipo === 'item'){
       await loadItems();
     } else {
@@ -682,7 +701,7 @@ function render(){
       </td>
       <td>
         <button class="obs-icon ${it.observacao ? 'has-note' : ''}" title="${it.observacao ? 'Ver/editar anotação' : 'Adicionar anotação'}"
-                onclick="abrirModalObsItem(${it.id})">📝</button>
+                onclick="abrirModalObsItem(${it.id})">📝 ${it.observacao ? 'Ver' : 'Adicionar'}</button>
       </td>
       <td><span class="reset" onclick="removeItem(${it.id})">remover</span></td>
     </tr>
@@ -693,18 +712,20 @@ function render(){
       <td>${it.codigo}</td>
       <td>${it.modulo || '-'}</td>
       <td>${it.cliente || '-'}</td>
+      <td><button class="obs-icon ${it.observacao ? 'has-note' : ''}" title="${it.observacao ? 'Ver/editar anotação' : 'Adicionar anotação'}" onclick="abrirModalObsItem(${it.id})">📝 ${it.observacao ? 'Ver' : 'Adicionar'}</button></td>
       <td><button class="voltar-btn" onclick="desfazerBaixa(${it.id})" title="Use se baixou sem querer — remove do relatório de hoje">Voltar para Fila</button></td>
     </tr>
-  `).join('') : `<tr><td colspan="4" class="empty">Nada baixado hoje ainda.</td></tr>`;
+  `).join('') : `<tr><td colspan="5" class="empty">Nada baixado hoje ainda.</td></tr>`;
 
   const recusadosRows = recusadosHoje.length ? recusadosHoje.map(it => `
     <tr>
       <td>${it.codigo}</td>
       <td>${it.modulo || '-'}</td>
       <td>${it.cliente || '-'}</td>
+      <td><button class="obs-icon ${it.observacao ? 'has-note' : ''}" title="${it.observacao ? 'Ver/editar anotação' : 'Adicionar anotação'}" onclick="abrirModalObsItem(${it.id})">📝 ${it.observacao ? 'Ver' : 'Adicionar'}</button></td>
       <td><button class="voltar-btn" onclick="setStatus(${it.id}, 'pendente')">Voltar para Fila</button></td>
     </tr>
-  `).join('') : `<tr><td colspan="4" class="empty">Nada recusado hoje ainda.</td></tr>`;
+  `).join('') : `<tr><td colspan="5" class="empty">Nada recusado hoje ainda.</td></tr>`;
 
   document.getElementById('app').innerHTML = `
     <div class="cards">
@@ -756,14 +777,14 @@ function render(){
         <div class="today-grid-panel">
           <h3>Baixados hoje <span class="count">${baixadosHoje.length}</span></h3>
           <table>
-            <thead><tr><th>Código</th><th>Módulo</th><th>Cliente</th><th></th></tr></thead>
+            <thead><tr><th>Código</th><th>Módulo</th><th>Cliente</th><th></th><th></th></tr></thead>
             <tbody>${baixadosRows}</tbody>
           </table>
         </div>
         <div class="today-grid-panel">
           <h3>Recusados hoje <span class="count">${recusadosHoje.length}</span></h3>
           <table>
-            <thead><tr><th>Código</th><th>Módulo</th><th>Cliente</th><th></th></tr></thead>
+            <thead><tr><th>Código</th><th>Módulo</th><th>Cliente</th><th></th><th></th></tr></thead>
             <tbody>${recusadosRows}</tbody>
           </table>
         </div>
@@ -1001,6 +1022,8 @@ async function salvarObservacao(id, valor, inputEl){
   await loadItems();
 })();
 </script>
+<div id="toast" class="toast">✅ Salvo com sucesso</div>
+
 <div id="obs-modal" class="modal-overlay" onclick="if(event.target===this) fecharModalObs()">
   <div class="modal-box">
     <h3 id="obs-modal-titulo">Observação</h3>

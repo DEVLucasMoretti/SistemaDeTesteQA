@@ -1,2 +1,2 @@
-2026-07-17 15:15:47 - Starting C:\Program Files\nodejs\node.exe  C:\TesteBaixas\node_modules\node-windows\lib\wrapper.js --file C:\TesteBaixas\server.js --scriptoptions= --log "ProgressoCorrecoesAPI wrapper" --grow 0.25 --wait 1 --maxrestarts 3 --abortonerror n --stopparentfirst undefined
-2026-07-17 15:15:47 - Started 14096
+2026-07-17 16:44:58 - Starting C:\Program Files\nodejs\node.exe  C:\TesteBaixas\node_modules\node-windows\lib\wrapper.js --file C:\TesteBaixas\server.js --scriptoptions= --log "ProgressoCorrecoesAPI wrapper" --grow 0.25 --wait 1 --maxrestarts 3 --abortonerror n --stopparentfirst undefined
+2026-07-17 16:44:58 - Started 7080

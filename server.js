@@ -320,7 +320,7 @@ app.get('/api/items/hoje', async (req, res) => {
     const result = await pool.request()
       .input('testador', sql.NVarChar, testador)
       .input('status', sql.NVarChar, status)
-      .query(`SELECT id, codigo, tipo, modulo, cliente, status, status_em
+      .query(`SELECT id, codigo, tipo, modulo, cliente, status, status_em, observacao
               FROM dbo.TestesQA
               WHERE testador = @testador AND status = @status
                 AND CAST(status_em AS DATE) = CAST(GETDATE() AS DATE)
