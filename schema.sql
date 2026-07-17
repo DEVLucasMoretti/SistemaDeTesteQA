@@ -44,3 +44,10 @@ BEGIN
     ALTER TABLE dbo.TestesQAHistorico ADD observacao NVARCHAR(500) NULL;
 END
 GO
+
+-- Coluna de Situação (Padrão | Com Programador | Buildando Pipeline | Esperando Análise)
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'situacao' AND Object_ID = Object_ID('dbo.TestesQAHistorico'))
+BEGIN
+    ALTER TABLE dbo.TestesQAHistorico ADD situacao NVARCHAR(30) NOT NULL DEFAULT 'Padrão';
+END
+GO

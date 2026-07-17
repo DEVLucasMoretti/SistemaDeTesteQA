@@ -29,7 +29,8 @@ const config = {
   port: parseInt(process.env.DB_PORT || '1433', 10),
   options: {
     encrypt: false,               // rede interna, sem TLS entre servidor e SQL Server
-    trustServerCertificate: true
+    trustServerCertificate: true,
+    useUTC: false                 // grava datas no horário local do servidor, evita registro "pular" de dia
   },
   pool: { max: 10, min: 0, idleTimeoutMillis: 30000 }
 };
@@ -167,7 +168,7 @@ app.get('/api/historico/resumo', async (req, res) => {
   try {
     const pool = await getPool();
     const result = await pool.request()
-      .input('data', sql.Date, data)
+      .input('data', sql.VarChar, data)
       .input('testador', sql.NVarChar, testador)
       .query(`
         SELECT tipo,
@@ -222,9 +223,10 @@ app.post('/api/items/:id/desfazer-baixa', async (req, res) => {
   }
 });
 
-// Histórico discriminado (linha a linha), filtrando por testador e por tipo/status
+// Histórico discriminado (linha a linha), filtrando por testador, tipo/status e intervalo de datas
+// Se "situacao" for informado, a data é ignorada (mostra todas as datas com aquela situação)
 app.get('/api/historico/detalhado', async (req, res) => {
-  const { testador, filtro } = req.query;
+  const { testador, filtro, dataInicio, dataFim, situacao } = req.query;
   try {
     const pool = await getPool();
     const request = pool.request();
@@ -243,8 +245,18 @@ app.get('/api/historico/detalhado', async (req, res) => {
       where += ' AND tipo = @tipoAlteracao';
     }
 
+    if (situacao) {
+      // Filtrando por situação: não considera data
+      request.input('situacao', sql.NVarChar, situacao);
+      where += ' AND situacao = @situacao';
+    } else if (dataInicio && dataFim) {
+      request.input('dataInicio', sql.VarChar, dataInicio);
+      request.input('dataFim', sql.VarChar, dataFim);
+      where += ' AND CAST(registrado_em AS DATE) BETWEEN @dataInicio AND @dataFim';
+    }
+
     const result = await request.query(`
-      SELECT id, testador, codigo, tipo, status, registrado_em, observacao
+      SELECT id, testador, codigo, tipo, status, registrado_em, observacao, situacao
       FROM dbo.TestesQAHistorico
       ${where}
       ORDER BY registrado_em DESC
@@ -255,16 +267,26 @@ app.get('/api/historico/detalhado', async (req, res) => {
   }
 });
 
-// Salva/edita a observação de uma linha do histórico
+// Salva/edita a observação e/ou situação de uma linha do histórico
 app.patch('/api/historico/:id', async (req, res) => {
   const { id } = req.params;
-  const { observacao } = req.body;
+  const { observacao, situacao } = req.body;
   try {
     const pool = await getPool();
-    await pool.request()
-      .input('id', sql.Int, id)
-      .input('observacao', sql.NVarChar, observacao || null)
-      .query('UPDATE dbo.TestesQAHistorico SET observacao = @observacao WHERE id = @id');
+    const sets = [];
+    const request = pool.request().input('id', sql.Int, id);
+
+    if (observacao !== undefined) {
+      request.input('observacao', sql.NVarChar, observacao || null);
+      sets.push('observacao = @observacao');
+    }
+    if (situacao !== undefined) {
+      request.input('situacao', sql.NVarChar, situacao);
+      sets.push('situacao = @situacao');
+    }
+    if (!sets.length) return res.status(400).json({ error: 'nada para atualizar' });
+
+    await request.query(`UPDATE dbo.TestesQAHistorico SET ${sets.join(', ')} WHERE id = @id`);
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -293,14 +315,16 @@ app.get('/api/items/hoje', async (req, res) => {
   }
 });
 
-// Histórico agrupado por testador, filtrando por data (e opcionalmente por testador)
+// Histórico agrupado por testador, filtrando por intervalo de datas (e opcionalmente por testador)
 app.get('/api/historico', async (req, res) => {
-  const { data, testador } = req.query;
-  if (!data) return res.status(400).json({ error: 'parâmetro data é obrigatório (YYYY-MM-DD)' });
+  const { dataInicio, dataFim, testador } = req.query;
+  if (!dataInicio || !dataFim) return res.status(400).json({ error: 'parâmetros dataInicio e dataFim são obrigatórios (YYYY-MM-DD)' });
   try {
     const pool = await getPool();
-    const request = pool.request().input('data', sql.Date, data);
-    let where = 'WHERE CAST(registrado_em AS DATE) = @data';
+    const request = pool.request()
+      .input('dataInicio', sql.VarChar, dataInicio)
+      .input('dataFim', sql.VarChar, dataFim);
+    let where = 'WHERE CAST(registrado_em AS DATE) BETWEEN @dataInicio AND @dataFim';
     if (testador && testador !== 'Todos') {
       request.input('testador', sql.NVarChar, testador);
       where += ' AND testador = @testador';
